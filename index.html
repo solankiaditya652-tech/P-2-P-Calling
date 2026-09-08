@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Audio Connect</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PeerJS CDN -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: radial-gradient(circle at top left, #1e1b4b, #0f172a, #020617);
+        }
+
+        /* Animated Glowing Pulse */
+        .pulse-ring {
+            box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+            animation: pulse-ring 1.8s infinite cubic-bezier(0.66, 0, 0, 1);
+        }
+
+        .pulse-ring-active {
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+            animation: pulse-ring-green 1.5s infinite cubic-bezier(0.66, 0, 0, 1);
+        }
+
+        @keyframes pulse-ring {
+            to { box-shadow: 0 0 0 25px rgba(99, 102, 241, 0); }
+        }
+
+        @keyframes pulse-ring-green {
+            to { box-shadow: 0 0 0 30px rgba(34, 197, 94, 0); }
+        }
+
+        /* Glassmorphism Effect */
+        .glass-card {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Sound Wave Animation */
+        .bar {
+            width: 4px;
+            height: 12px;
+            background: #818cf8;
+            border-radius: 4px;
+            animation: sound-wave 1s infinite ease-in-out;
+        }
+
+        .bar:nth-child(2) { animation-delay: 0.2s; }
+        .bar:nth-child(3) { animation-delay: 0.4s; }
+        .bar:nth-child(4) { animation-delay: 0.1s; }
+
+        @keyframes sound-wave {
+            0%, 100% { height: 8px; opacity: 0.5; }
+            50% { height: 28px; opacity: 1; }
+        }
+
+        .wave-paused .bar {
+            animation: none;
+            height: 8px;
+            opacity: 0.3;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4 text-slate-100">
+
+    <!-- Main Container -->
+    <div class="w-full max-w-md glass-card rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+        
+        <!-- Top Status Bar -->
+        <div class="flex items-center justify-between mb-8 pb-4 border-b border-slate-700/50">
+            <div class="flex items-center space-x-2">
+                <span id="statusDot" class="w-3 h-3 rounded-full bg-amber-500"></span>
+                <span id="statusText" class="text-xs font-semibold tracking-wider uppercase text-slate-400">Connecting...</span>
+            </div>
+            <div class="flex space-x-1 hidden" id="audioWave">
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+                <div class="bar"></div>
+            </div>
+        </div>
+
+        <!-- Avatar / Call Visualizer Area -->
+        <div class="flex flex-col items-center justify-center my-6">
+            <div class="relative flex items-center justify-center">
+                <div id="avatarPulse" class="w-28 h-28 rounded-full bg-indigo-600/30 flex items-center justify-center transition-all duration-300">
+                    <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg">
+                        <i id="avatarIcon" class="fa-solid fa-user text-3xl text-white"></i>
+                    </div>
+                </div>
+            </div>
+            <h2 id="callTimer" class="mt-4 text-2xl font-bold tracking-tight text-white hidden">00:00</h2>
+            <p id="peerDisplayState" class="text-sm text-slate-400 mt-1">Generating your Unique ID...</p>
+        </div>
+
+        <!-- ID Card & Connection Section -->
+        <div class="space-y-4 my-6">
+            <!-- User's ID Box -->
+            <div class="bg-slate-900/60 rounded-2xl p-3.5 border border-slate-800">
+                <label class="block text-xs font-medium text-slate-400 mb-1">Your ID</label>
+                <div class="flex items-center justify-between">
+                    <span id="myId" class="font-mono text-sm font-semibold text-indigo-300 truncate tracking-wider">Fetching ID...</span>
+                    <button onclick="copyMyId()" class="ml-2 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl text-xs font-semibold transition-all active:scale-95 flex items-center space-x-1 border border-indigo-500/20">
+                        <i class="fa-regular fa-copy"></i>
+                        <span>Copy</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Peer ID Input Box -->
+            <div id="connectForm" class="space-y-3">
+                <div class="relative">
+                    <input type="text" id="peerIdInput" placeholder="Enter Friend's ID" class="w-full bg-slate-900/80 border border-slate-700/60 rounded-2xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all">
+                </div>
+                <button onclick="makeCall()" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold py-3.5 rounded-2xl shadow-lg shadow-indigo-500/25 transition-all active:scale-98 flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-phone"></i>
+                    <span>Start Audio Call</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Active Call Controls (Mute/Hangup) -->
+        <div id="callControls" class="hidden flex items-center justify-center space-x-6 pt-4">
+            <!-- Mute Button -->
+            <button id="muteBtn" onclick="toggleMute()" class="w-14 h-14 rounded-full bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center justify-center shadow-lg transition-all active:scale-90">
+                <i id="muteIcon" class="fa-solid fa-microphone text-lg"></i>
+            </button>
+            <!-- End Call Button -->
+            <button onclick="endCall()" class="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-lg shadow-red-600/30 transition-all active:scale-90 pulse-ring-active">
+                <i class="fa-solid fa-phone-slash text-xl"></i>
+            </button>
+        </div>
+
+        <!-- Toast Notification -->
+        <div id="toast" class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-indigo-600 text-white text-xs px-4 py-2 rounded-full shadow-lg opacity-0 pointer-events-none transition-all duration-300">
+            ID Copied to Clipboard!
+        </div>
+
+        <!-- Hidden Audio Element for Remote Stream -->
+        <audio id="remoteAudio" autoplay></audio>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        let peer = null;
+        let currentCall = null;
+        let localStream = null;
+        let isMuted = false;
+        let timerInterval = null;
+        let secondsElapsed = 0;
+
+        // UI Elements
+        const myIdEl = document.getElementById('myId');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const peerDisplayState = document.getElementById('peerDisplayState');
+        const avatarPulse = document.getElementById('avatarPulse');
+        const connectForm = document.getElementById('connectForm');
+        const callControls = document.getElementById('callControls');
+        const callTimerEl = document.getElementById('callTimer');
+        const audioWave = document.getElementById('audioWave');
+        const muteBtn = document.getElementById('muteBtn');
+        const muteIcon = document.getElementById('muteIcon');
+
+        // Initialize PeerJS
+        function initPeer() {
+            peer = new Peer();
+
+            peer.on('open', (id) => {
+                myIdEl.innerText = id;
+                statusDot.className = "w-3 h-3 rounded-full bg-emerald-500";
+                statusText.innerText = "Ready";
+                peerDisplayState.innerText = "Share your ID or enter friend's ID";
+            });
+
+            // Handle incoming calls
+            peer.on('call', async (call) => {
+                const accept = confirm("Incoming Audio Call! Do you want to accept?");
+                if (accept) {
+                    try {
+                        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                        call.answer(localStream);
+                        setupCallEvents(call);
+                    } catch (err) {
+                        alert("Microphone Access Required!");
+                        console.error(err);
+                    }
+                } else {
+                    call.close();
+                }
+            });
+
+            peer.on('error', (err) => {
+                console.error(err);
+                showToast("Connection Error: " + err.type);
+            });
+        }
+
+        // Make an Outgoing Call
+        async function makeCall() {
+            const peerId = document.getElementById('peerIdInput').value.trim();
+            if (!peerId) {
+                showToast("Please enter a valid Peer ID!");
+                return;
+            }
+
+            try {
+                statusText.innerText = "Calling...";
+                peerDisplayState.innerText = "Ringing...";
+                localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                
+                const call = peer.call(peerId, localStream);
+                setupCallEvents(call);
+            } catch (err) {
+                alert("Microphone permission error!");
+                statusText.innerText = "Ready";
+                peerDisplayState.innerText = "Failed to access mic";
+            }
+        }
+
+        // Setup Call Event Listeners
+        function setupCallEvents(call) {
+            currentCall = call;
+
+            call.on('stream', (remoteStream) => {
+                const remoteAudio = document.getElementById('remoteAudio');
+                remoteAudio.srcObject = remoteStream;
+                remoteAudio.play();
+                
+                onCallConnected();
+            });
+
+            call.on('close', () => {
+                onCallEnded();
+            });
+
+            call.on('error', (err) => {
+                console.error(err);
+                onCallEnded();
+            });
+        }
+
+        // UI Updates on Call Connect
+        function onCallConnected() {
+            statusDot.className = "w-3 h-3 rounded-full bg-emerald-500";
+            statusText.innerText = "In Call";
+            peerDisplayState.innerText = "Connected";
+            
+            avatarPulse.classList.add('pulse-ring-active');
+            connectForm.classList.add('hidden');
+            callControls.classList.remove('hidden');
+            callTimerEl.classList.remove('hidden');
+            audioWave.classList.remove('hidden');
+
+            startTimer();
+        }
+
+        // End Call Logic
+        function endCall() {
+            if (currentCall) currentCall.close();
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            onCallEnded();
+        }
+
+        // UI Cleanup when Call Ends
+        function onCallEnded() {
+            stopTimer();
+            statusDot.className = "w-3 h-3 rounded-full bg-emerald-500";
+            statusText.innerText = "Ready";
+            peerDisplayState.innerText = "Call Ended";
+
+            avatarPulse.classList.remove('pulse-ring-active');
+            connectForm.classList.remove('hidden');
+            callControls.classList.add('hidden');
+            callTimerEl.classList.add('hidden');
+            audioWave.classList.add('hidden');
+
+            // Reset Mute
+            isMuted = false;
+            muteBtn.classList.remove('bg-red-500/20', 'text-red-500', 'border-red-500/40');
+            muteIcon.className = "fa-solid fa-microphone text-lg";
+
+            currentCall = null;
+            localStream = null;
+        }
+
+        // Mute / Unmute Mic
+        function toggleMute() {
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    isMuted = !isMuted;
+                    audioTrack.enabled = !isMuted;
+
+                    if (isMuted) {
+                        muteBtn.classList.add('bg-red-500/20', 'text-red-500', 'border-red-500/40');
+                        muteIcon.className = "fa-solid fa-microphone-slash text-lg";
+                        audioWave.classList.add('wave-paused');
+                    } else {
+                        muteBtn.classList.remove('bg-red-500/20', 'text-red-500', 'border-red-500/40');
+                        muteIcon.className = "fa-solid fa-microphone text-lg";
+                        audioWave.classList.remove('wave-paused');
+                    }
+                }
+            }
+        }
+
+        // Call Timer
+        function startTimer() {
+            secondsElapsed = 0;
+            callTimerEl.innerText = "00:00";
+            timerInterval = setInterval(() => {
+                secondsElapsed++;
+                const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+                const secs = String(secondsElapsed % 60).padStart(2, '0');
+                callTimerEl.innerText = `${mins}:${secs}`;
+            }, 1000);
+        }
+
+        function stopTimer() {
+            clearInterval(timerInterval);
+        }
+
+        // Copy ID to Clipboard
+        function copyMyId() {
+            const idText = myIdEl.innerText;
+            if (idText && idText !== "Fetching ID...") {
+                navigator.clipboard.writeText(idText);
+                showToast("ID Copied to Clipboard!");
+            }
+        }
+
+        // Toast Helper
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 2500);
+        }
+
+        // Initialize on Load
+        window.onload = initPeer;
+    </script>
+</body>
+</html>
